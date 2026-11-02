@@ -1,0 +1,10 @@
+node_modules/
+dist/
+app/antinode.html
+app/antinode.body.html
+*.jks
+*.keystore
+*.aab
+*.apk
+*.apks
+.env*

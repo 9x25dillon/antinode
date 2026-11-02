@@ -1,0 +1,19 @@
+{
+  "name": "antinode",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
+    "build": "node app/build-drifter.mjs",
+    "android": "bash packaging/android/build.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "esbuild": "0.28.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

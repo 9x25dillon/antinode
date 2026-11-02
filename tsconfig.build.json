@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "lib": ["ES2022", "DOM"] },
+  "include": ["src", "game", "app/drifter.ts", "app/persist.ts", "app/touch.ts", "app/sfx.ts", "app/pad.ts", "test/pad.test.ts"],
+  "exclude": []
+}
