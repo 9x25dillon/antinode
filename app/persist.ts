@@ -29,9 +29,9 @@ function reason(err: unknown): string {
   if (err instanceof SaveError) return err.message.toUpperCase();
   const name = (err as { name?: string } | null)?.name ?? "";
   if (name === "QuotaExceededError" || name === "NS_ERROR_DOM_QUOTA_REACHED") {
-    return "THE BROWSER'S STORAGE FOR THIS PAGE IS FULL";
+    return "THE STORAGE FOR THIS GAME IS FULL";
   }
-  return err instanceof Error ? err.message.toUpperCase() : "THE BROWSER REFUSED";
+  return err instanceof Error ? err.message.toUpperCase() : "THE DEVICE REFUSED";
 }
 
 /** The stored run's text, or null if there is none (or no storage at all). */
@@ -42,7 +42,7 @@ export function readRun(): string | null {
 /** Keep this text as the run. Null on success, or why it could not be kept. */
 export function writeRun(text: string): string | null {
   const s = storage();
-  if (!s) return "THIS BROWSER KEEPS NOTHING FOR A PAGE OPENED THIS WAY";
+  if (!s) return "THIS DEVICE IS NOT KEEPING ANYTHING FOR THE GAME";
   try { s.setItem(RUN_KEY, text); return null; } catch (err) { return reason(err); }
 }
 

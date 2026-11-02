@@ -126,7 +126,7 @@ const BODY = `<header>
     <button id="forge-open">Crystal forge</button>
     <button id="run-export" title="Download this run as a file that loads back exactly">Export run</button>
     <label title="Go on with a run from a file (from the title or after a death)">Import run <input id="run-import" type="file" accept=".json,application/json" hidden></label>
-    <span id="expedition-status" role="status">Optional survival mode · crystal crafting · three encounter stages · V / L3 forge · runs are kept between visits</span>
+    <span id="expedition-status" role="status">Optional survival mode · crystal crafting · three encounter stages · runs are kept between visits</span>
   </div>
 </header>
 

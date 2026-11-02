@@ -41,6 +41,11 @@ const MENU_LEFT: readonly Spec[] = [
   { label: "▲", code: "TouchDepthUp", cls: "depth", hint: "Retune the channel up a harmonic" },
   { label: "▼", code: "TouchDepthDown", cls: "depth", hint: "Retune the channel down a harmonic" },
 ];
+/** Expeditions only: nudges the cross-phase, held like the keys it stands in for. */
+const TRIM: readonly Spec[] = [
+  { label: "TRIM ◀", code: "KeyZ", cls: "trimb", hint: "Trim the cross-phase down" },
+  { label: "TRIM ▶", code: "KeyX", cls: "trimb", hint: "Trim the cross-phase up" },
+];
 const MENU_RIGHT: readonly Spec[] = [
   { label: "FORGE", code: "KeyV", cls: "forge", hint: "Crystal forge (expeditions)" },
   { label: "II", code: "Escape", cls: "pause", hint: "Stop" },
@@ -83,6 +88,10 @@ const STYLE = `
   #touch .menu.right { right:8px; }
   #touch .menu button { position:static; width:calc(var(--b) * 0.8); height:calc(var(--b) * 0.7); border-radius:8px; }
   #touch .menu .forge { width:calc(var(--b) * 1.05); }
+  #touch .trim { position:absolute; right:8px; top:calc(var(--b) * 1.45 + 24px); display:flex; gap:6px; }
+  #touch .trim[hidden] { display:none; }
+  #touch .trim button { position:static; width:calc(var(--b) * 1.05); height:calc(var(--b) * 0.7); border-radius:8px;
+    border-color:rgba(255,201,74,0.7); }
   @media (pointer: coarse) {
     .sub, .legend, .controls { display:none !important; }
     body { gap:4px !important; padding:4px !important; }
@@ -231,12 +240,18 @@ export function mountTouch(pad: Pad, force = false): void {
     for (const s of specs) make(menu, s, pad);
     root.appendChild(menu);
   }
+  const trim = document.createElement("div");
+  trim.className = "trim";
+  trim.hidden = true;
+  for (const s of TRIM) make(trim, s, pad);
+  root.appendChild(trim);
   document.body.appendChild(root);
 
   // Out of the way while a real controller is reporting. Checked once a
   // frame, since that is how often the pad itself is read.
   const watch = () => {
     root.hidden = pad.connected;
+    trim.hidden = !pad.trimShown;
     requestAnimationFrame(watch);
   };
   requestAnimationFrame(watch);

@@ -504,9 +504,16 @@ export class Game {
   private wasPlaying = false;
 
   /** Explicit start action; never replaces an ongoing run — a saved one included. */
-  startExpedition(source: ResonanceSource): boolean {
+  /** `replaceSaved` is the player's second, confirming tap: only then does a saved run go. */
+  startExpedition(source: ResonanceSource, replaceSaved = false): boolean {
     if (this.screen !== "title" && this.screen !== "dead") return false;
-    if (this.screen === "title" && this.hasSaved()) return false;
+    if (this.screen === "title" && this.hasSaved()) {
+      if (!replaceSaved) return false;
+      clearRun();
+      this.saved = null;
+      this.savedError = "";
+      this.abandonHeld = 0;
+    }
     seed32(source.seed);
     this.expeditionSource = source;
     this.begin();
@@ -625,6 +632,11 @@ export class Game {
 
   /** The names to print for each verb: the pad's if one is reporting, the
    *  on-screen buttons' if a finger has used them, otherwise the keyboard's. */
+  /** A finger on the on-screen controls and no pad: name what is on the screen. */
+  private get onTouch(): boolean { return this.pad.touched && !this.pad.connected; }
+  /** What opens the forge, in the terms of whatever the player is holding. */
+  get forgeKey(): string { return this.onTouch ? "FORGE" : "V / L3"; }
+
   private glyph(): typeof GLYPH.pad | typeof GLYPH.keys | typeof GLYPH.touch {
     return this.pad.connected ? GLYPH.pad : this.pad.touched ? GLYPH.touch : GLYPH.keys;
   }
@@ -747,8 +759,7 @@ export class Game {
     this.savedError = "";
     this.lastSave = this.t;
     const where = `AEON ${header.aeon}  ·  ${header.name}`;
-    this.say(header.build === BUILD ? `PICKED UP WHERE YOU LEFT IT  ·  ${where}`
-      : `PICKED UP  ·  ${where}  ·  WRITTEN BY ANOTHER BUILD, PLAYING BY THIS ONE'S RULES`);
+    this.say(`PICKED UP WHERE YOU LEFT IT  ·  ${where}`);
   }
 
   /**
@@ -792,7 +803,7 @@ export class Game {
     }
     const trouble = writeRun(text);
     this.adopt(r.run, r.surface, r.header);
-    return trouble ? `LOADED, BUT IT WILL NOT SURVIVE A RELOAD: ${trouble}` : `LOADED AEON ${r.header.aeon}`;
+    return trouble ? `LOADED, BUT IT WILL NOT SURVIVE CLOSING THE GAME: ${trouble}` : `LOADED AEON ${r.header.aeon}`;
   }
 
   /** What a run's end changes in storage: it is over, and the records stand. */
@@ -1148,7 +1159,7 @@ export class Game {
     }
     this.screen = "play";
     this.snapCam = true;
-    this.say(this.run.resonance ? "RESONANT EXPEDITION · V / L3 OPENS THE CRYSTAL FORGE" : "GATHER FOUR OF A KIND TO MAKE A CELL");
+    this.say(this.run.resonance ? `RESONANT EXPEDITION · ${this.forgeKey} OPENS THE CRYSTAL FORGE` : "GATHER FOUR OF A KIND TO MAKE A CELL");
   }
 
   private spend(i: number): void {
@@ -1226,6 +1237,7 @@ export class Game {
       if (dt > 0.05) dt = 0.05;
       if (this.hitstop > 0) { this.hitstop -= dt; this.decay(dt); }
       else this.update(dt);
+      this.pad.trimShown = this.screen === "play" && !this.paused && !this.forgeOpen && !!this.run?.resonance;
       this.draw();
       requestAnimationFrame(frame);
     };
@@ -1685,7 +1697,8 @@ export class Game {
     if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 2);
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 22);
     if (this.toastT > 0) this.toastT -= dt;
-    if (this.cardT > 0) {
+    // A tip is said once, ever, so it waits out a pause rather than expiring unseen.
+    if (this.cardT > 0 && !this.paused) {
       this.cardT -= dt;
       if (this.cardT <= 0) {
         const next = this.queued.shift();
@@ -1813,7 +1826,7 @@ export class Game {
       if (this.screen === "dead") this.drawDead();
       if (this.paused) this.drawPaused();
     }
-    this.drawCard();
+    if (!this.paused) this.drawCard();
     if (this.forgeOpen && this.screen === "play") this.drawForge();
 
     if (this.flash > 0) {
@@ -3961,12 +3974,12 @@ export class Game {
       const pitch=latticePitch(this.run);g.strokeStyle=GOLD;
       for(const at of blueprintSites(this.run,BLUEPRINTS[this.forgePick].kind,this.forgeRotation))
         g.strokeRect(VIEW_W-125+(at.x-this.run.you.x)/pitch*12,368+(at.y-this.run.you.y)/pitch*12,8,8);
-      g.fillStyle=DIM;g.font=`500 9px ${MONO}`;g.fillText(`${this.forgeRotation*90}° · Y / C rotates`,VIEW_W-210,394);
+      g.fillStyle=DIM;g.font=`500 9px ${MONO}`;g.fillText(`${this.forgeRotation*90}° · ${this.onTouch?"THRONE":"Y / C"} rotates`,VIEW_W-210,394);
     }
     g.fillStyle="#224d59";g.fillRect(65,410,VIEW_W-130,35);g.fillStyle="#fff";
-    g.fillText("ASSEMBLE / WEAVE · A / X / ENTER / SPACE",80,421);
+    g.fillText(this.onTouch?"ASSEMBLE / WEAVE · TAP HERE":"ASSEMBLE / WEAVE · A / X / ENTER / SPACE",80,421);
     g.fillStyle=GOLD;wrap(g,this.forgeMessage,70,451,VIEW_W-140,16);
-    g.fillStyle=DIM;g.fillText("Q / B / D-PAD selects · V / L3 / LB / ESC closes · world paused",70,500);
+    g.fillStyle=DIM;g.fillText(this.onTouch?"TAP A ROW OR NEXT selects · II OR LIFT closes · world paused":"Q / B / D-PAD selects · V / L3 / LB / ESC closes · world paused",70,500);
   }
 
   /**
@@ -4086,7 +4099,7 @@ export class Game {
     g.fillText(`LOCK ${Math.round(s.lock * 100)}%  BANK ${bank(run).toFixed(0)}`, cx, cy + R + 21);
     g.fillStyle = FAINT;
     g.font = `500 8px ${MONO}`;
-    g.fillText(`TRIM ±${Math.round((TRIM_RANGE * 180) / Math.PI)}° · R-STICK / Z X`, cx, cy + R + 34);
+    g.fillText(`TRIM ±${Math.round((TRIM_RANGE * 180) / Math.PI)}° · ${this.onTouch ? "TRIM ◀ ▶" : "R-STICK / Z X"}`, cx, cy + R + 34);
     g.textAlign = "left";
     g.restore();
   }
@@ -4181,7 +4194,7 @@ export class Game {
       g.fillStyle=GOLD;g.font=`600 10px ${MONO}`;g.textAlign="center";
       g.fillText(`${l.name} · R ${s.R.toFixed(2)} · ${s.fragments} FRAGMENTS`,VIEW_W/2,78);
       g.fillStyle=INK;g.fillText(s.cleared?"CLEARED · NEXT BIRTH ADVANCES":`${s.kills-s.stageKills}/${l.kills} kills · ${s.crafted-s.stageCrafts}/${l.crafts} assemblies`,VIEW_W/2,94);
-      g.fillStyle=DIM;g.fillText("V / L3 · CRYSTAL FORGE",VIEW_W/2,110);g.textAlign="left";
+      g.fillStyle=DIM;g.fillText(`${this.forgeKey} · CRYSTAL FORGE`,VIEW_W/2,110);g.textAlign="left";
       this.drawSigil();
     }
 
@@ -4538,7 +4551,7 @@ export class Game {
     g.textAlign = "center";
     g.fillStyle = FAINT;
     g.font = `600 9px ${MONO}`;
-    g.fillText(`${this.pad.connected ? `${G.cycle} / D-PAD / STICK` : "Q / A-D / 1-3 / CLICK"} TO CHOOSE`
+    g.fillText(`${this.pad.connected ? `${G.cycle} / D-PAD / STICK` : this.onTouch ? `${G.cycle} / TAP` : "Q / A-D / 1-3 / CLICK"} TO CHOOSE`
       + `  ·  ${G.place} TO TAKE  ·  ${G.confirm} TO ENTER`
       + `${run.evolution.taken > 0 ? `  ·  TAKEN ${run.evolution.taken}` : ""}`
       + `  ·  RACK ${run.cells.length}`, VIEW_W / 2, this.offerBottom(offer.length) + 12);
@@ -4655,7 +4668,7 @@ export class Game {
     g.fillText(this.saveTrouble
       ? `NOT SAVED: ${this.saveTrouble}`
       : this.lastSave >= 0
-        ? `SAVED ${Math.max(0, this.t - this.lastSave).toFixed(0)} S AGO  ·  RELOADING THE PAGE GOES ON FROM HERE`
+        ? `SAVED ${Math.max(0, this.t - this.lastSave).toFixed(0)} S AGO  ·  CLOSING THE GAME LOSES NOTHING`
         : "NOT SAVED YET", VIEW_W / 2, 104);
     const ally = companion(run);
     if (ally) {
@@ -4677,7 +4690,7 @@ export class Game {
     g.fillStyle = DIM;
     const pad = (t: string) => t.padEnd(13, " ");
     const lines = [
-      `${pad(G.move)}POINT WHERE TO GO. THE NODE LEADS YOU, AND YOU FALL INTO IT.`,
+      `${pad(G.move)}${this.onTouch ? "PUSH" : "POINT"} WHERE TO GO. THE NODE LEADS YOU, AND YOU FALL INTO IT.`,
       `${pad(G.grip)}ONE TRAP UNDER YOUR HAND. HOLDS, KILLS, AND TRIPLES YOUR SPEED.`,
       `${pad(G.dash)}BURST - HOW YOU GATHER AND DODGE. AN ARM THAT REACHES YOU IN ONE GOES BACK.`,
       `${pad(G.place)}TAP: BUILD. HOLD: GROW MITOCHONDRION ON A STRUCTURE (2 CELLS).`,
@@ -4709,24 +4722,13 @@ export class Game {
     }
     lines.forEach((l, i) => g.fillText(l, VIEW_W / 2, 186 + i * 15));
 
-    // THE DECISIVE TEST, on the screen somebody opens when a control is not
-    // doing what they expect. Two lines: what the browser is handing over, and
-    // what this game made of it. If the first moves and the second does not,
-    // the fault is mine and the numbers say where. If neither moves, the
-    // browser is not delivering — which on a desktop is very often nothing more
-    // than the page having lost focus to a devtools window.
-    const it = this.intent;
-    g.font = `600 9px ${MONO}`;
-    g.fillStyle = this.pad.connected ? `rgb(${JADE})` : GOLD;
-    g.fillText(this.pad.describe(), VIEW_W / 2, VIEW_H - 76);
-    g.fillStyle = DIM;
-    g.fillText(
-      it
-        ? `READ AS  move ${it.move.x.toFixed(2)},${it.move.y.toFixed(2)}`
-          + `   grip ${it.grip ? "YES" : "no"}   dash ${it.dash ? "YES" : "no"}`
-          + `   place ${it.place ? "YES" : "no"}   throne ${it.crownDown ? "YES" : "no"}`
-        : "READ AS  (nothing yet)",
-      VIEW_W / 2, VIEW_H - 62);
+    // A connected pad is named so the player can see it was found. Nothing is
+    // said when there is none: a phone's controls are already on the screen.
+    if (this.pad.connected) {
+      g.font = `600 9px ${MONO}`;
+      g.fillStyle = `rgb(${JADE})`;
+      g.fillText(this.pad.describe(), VIEW_W / 2, VIEW_H - 62);
+    }
 
     const pulse = 0.55 + 0.45 * Math.sin(this.t * 3);
     g.font = `700 13px ${MONO}`;
@@ -4990,31 +4992,29 @@ export class Game {
   private drawTitle(): void {
     const g = this.ctx;
     g.textAlign = "center";
-    g.fillStyle = "rgba(5,7,14,0.62)";
+    g.fillStyle = "rgba(5,7,14,0.88)";
     g.fillRect(0, 0, VIEW_W, VIEW_H);
 
     g.font = `700 50px ${MONO}`;
     g.fillStyle = INK;
-    g.fillText("ANTINODE", VIEW_W / 2, 118);
-    g.font = `600 12px ${MONO}`;
+    g.fillText("ANTINODE", VIEW_W / 2, 72);
+    g.font = `600 15px ${MONO}`;
     g.fillStyle = `rgb(${NODE})`;
     g.fillText("YOU ARE A FIELD. SO IS THE OTHER ONE, AND IT IS INSIDE THE MATTER.",
-      VIEW_W / 2, 172);
-    g.font = `600 10px ${MONO}`;
+      VIEW_W / 2, 112);
+    g.font = `600 13px ${MONO}`;
     g.fillStyle = DIM;
     g.fillText("A WAVE WITH NO PROPAGATING SOLUTION DOES NOT TRAVEL AND CANNOT LEAVE.",
-      VIEW_W / 2, 192);
+      VIEW_W / 2, 136);
     g.fillText("NOBODY IS HOLDING IT. A DISPERSION RELATION IS. BUILD THE CRYSTAL",
-      VIEW_W / 2, 206);
-    g.fillText("WHOSE BAND GAP CATCHES IT, AND IT GOES WITH YOU.", VIEW_W / 2, 220);
+      VIEW_W / 2, 154);
+    g.fillText("WHOSE BAND GAP CATCHES IT, AND IT GOES WITH YOU.", VIEW_W / 2, 172);
 
     const on = this.pad.connected;
     const G = this.glyph();
-    g.fillStyle = DIM;
-    g.font = `600 11px ${MONO}`;
-    const pad = (t: string) => t.padEnd(13, " ");
+    const pad = (t: string) => t.padEnd(10, " ");
     const lines = [
-      `${pad(G.move)}${this.pad.touched && !on ? "PUSH WHERE TO GO." : "POINT WHERE TO GO - OR WASD."}`
+      `${pad(G.move)}${this.onTouch ? "PUSH WHERE TO GO." : "POINT WHERE TO GO - OR WASD."}`
         + " THE NODE LEADS YOU AND YOU FALL IN.",
       `${pad(G.grip)}CLOSE YOUR HAND: ONE TRAP, AND SPEED. IT COSTS STAMINA.`,
       `${pad(G.dash)}BURST. THE AMPLIFIER'S PEAK RATING, AND YOU ARE UNTOUCHABLE.`,
@@ -5025,35 +5025,37 @@ export class Game {
         ? "THE WATER EBBS - SPENDING YOUR CRYSTAL CLOSES THE CHANNEL BACK. HARDER."
         : "THE WATER HOLDS - WHAT YOU DROVE OPEN STAYS OPEN FOR THIS WORLD."}`,
       "",
-      "GATHER   BURST THROUGH THE DRIFTERS. AN N-FOLD MOTIF IS DRAWN AS AN N-GON.",
-      "BUILD    HOW MUCH YOU BUILD IS WHETHER THERE IS A GAP. HOW FAR APART IS WHERE.",
-      "CROWN    WHAT YOU FEED THE THRONE IS WHAT IT BECOMES, AND IT EATS YOUR CRYSTAL.",
-      "BIRTH    ITS BODY IS THE NEXT WORLD - AND STRANDS ITS OWN FIELD SOMEWHERE ELSE.",
+      `${pad("GATHER")}BURST THROUGH THE DRIFTERS. AN N-FOLD MOTIF IS DRAWN AS AN N-GON.`,
+      `${pad("BUILD")}HOW MUCH YOU BUILD IS WHETHER THERE IS A GAP. HOW FAR APART IS WHERE.`,
+      `${pad("CROWN")}WHAT YOU FEED THE THRONE IS WHAT IT BECOMES, AND IT EATS YOUR CRYSTAL.`,
+      `${pad("BIRTH")}ITS BODY IS THE NEXT WORLD - AND STRANDS ITS OWN FIELD SOMEWHERE ELSE.`,
     ];
-    lines.forEach((l, i) => g.fillText(l, VIEW_W / 2, 246 + i * 16));
+    g.textAlign = "left";
+    lines.forEach((l, i) => g.fillText(l, 118, 204 + i * 19));
+    g.textAlign = "center";
 
     const pulse = 0.55 + 0.45 * Math.sin(this.t * 3);
     if (this.hasSaved()) this.drawSaved(G.confirm, G.crown, pulse);
     else {
-      g.font = `700 14px ${MONO}`;
+      g.font = `700 16px ${MONO}`;
       g.fillStyle = `rgba(255,201,74,${pulse.toFixed(2)})`;
       g.fillText(on ? "PRESS START" : this.pad.touched ? "TAP THE WATER TO BEGIN"
         : "PRESS SPACE OR CLICK TO BEGIN", VIEW_W / 2, 462);
     }
-    // What the browser is actually reporting, said loudly. A controller that
-    // does not work is the least debuggable thing there is — nothing throws and
-    // nothing logs — and this line was previously eight-point grey where nobody
-    // would find it.
-    g.font = on ? `600 9px ${MONO}` : `700 11px ${MONO}`;
-    g.fillStyle = on ? `rgb(${JADE})` : GOLD;
-    g.fillText(this.pad.describe(), VIEW_W / 2, 438);
+    // A connected pad is named so the player can see it was found. Nothing is
+    // said when there is none: a phone's controls are already on the screen.
+    if (on) {
+      g.font = `600 10px ${MONO}`;
+      g.fillStyle = `rgb(${JADE})`;
+      g.fillText(this.pad.describe(), VIEW_W / 2, 438);
+    }
     if (this.best > 0) {
       g.fillStyle = DIM;
-      g.font = `600 10px ${MONO}`;
+      g.font = `600 12px ${MONO}`;
       g.fillText(`BEST ${this.best}   ·   DEEPEST AEON ${this.deepest}`, VIEW_W / 2,
-        this.hasSaved() ? 522 : 492);
+        this.hasSaved() ? 528 : 492);
     }
-    g.font = `600 9px ${MONO}`;
+    g.font = `600 10px ${MONO}`;
     g.fillStyle = FAINT;
     g.fillText("EVERY FORCE HERE IS THE GOR'KOV RADIATION POTENTIAL, COMPUTED LIVE",
       VIEW_W / 2, VIEW_H - 26);
@@ -5075,28 +5077,28 @@ export class Game {
     if (h) {
       const mins = Math.floor(h.t / 60);
       const secs = Math.floor(h.t % 60).toString().padStart(2, "0");
-      g.font = `700 14px ${MONO}`;
+      g.font = `700 16px ${MONO}`;
       g.fillStyle = `rgba(255,201,74,${pulse.toFixed(2)})`;
       g.fillText(`${confirm} TO GO ON  ·  AEON ${h.aeon}  ·  ${h.name}`, VIEW_W / 2, 462);
-      g.font = `600 10px ${MONO}`;
+      g.font = `600 12px ${MONO}`;
       g.fillStyle = INK;
       g.fillText(`${mins}:${secs} IN  ·  SCORE ${h.score}`
         + `${h.expedition ? "  ·  RESONANT EXPEDITION" : ""}`
         + `${h.phase === "reign" ? "  ·  THE KING IS AWAKE" : h.phase === "birth" ? "  ·  BETWEEN WORLDS" : ""}`
-        + `${h.build !== BUILD ? "  ·  SAVED BY ANOTHER BUILD" : ""}`,
-      VIEW_W / 2, 482);
+,
+      VIEW_W / 2, 484);
     } else {
       g.font = `700 12px ${MONO}`;
       g.fillStyle = RED;
       wrap(g, `A SAVED RUN IS HERE AND CANNOT BE READ: ${this.savedError}`, VIEW_W / 2, 458, 760, 14, true);
     }
     const f = Math.min(1, this.abandonHeld / ABANDON_HOLD);
-    g.font = `600 10px ${MONO}`;
+    g.font = `600 12px ${MONO}`;
     g.fillStyle = f > 0 ? RED : DIM;
-    g.fillText(`HOLD ${crown} TO ABANDON IT AND BEGIN AGAIN`, VIEW_W / 2, 502);
+    g.fillText(`HOLD ${crown} TO ABANDON IT AND BEGIN AGAIN`, VIEW_W / 2, 506);
     if (f > 0) {
       g.fillStyle = RED;
-      g.fillRect(VIEW_W / 2 - 120, 508, 240 * f, 2);
+      g.fillRect(VIEW_W / 2 - 120, 512, 240 * f, 2);
     }
     g.textAlign = "left";
   }
@@ -5235,10 +5237,13 @@ if (canvas) {
   mountTouch(game.input, "AntinodeAndroid" in window);
   let expedition: ResonanceSource = {seed:"20260927",trajectory:[]};
   const status=document.getElementById("expedition-status");
+  let replaceUntil=0;
   document.getElementById("expedition-start")?.addEventListener("click",()=>{
-    const started=game.startExpedition(expedition);
-    if(status)status.textContent=started?`Expedition seed ${expedition.seed}. V / L3 opens the forge.`
-      :game.hasSaved()?"A saved run is waiting. Go on with it, or hold the throne button on the title to abandon it first."
+    const confirmed=performance.now()<replaceUntil;
+    const started=game.startExpedition(expedition,confirmed);
+    replaceUntil=!started&&game.hasSaved()?performance.now()+4000:0;
+    if(status)status.textContent=started?`Expedition seed ${expedition.seed}. ${game.forgeKey} opens the forge.`
+      :game.hasSaved()?"This replaces your saved run. Tap Start Resonant Expedition again to confirm."
       :"An existing run is active. Start an expedition from the title or death screen.";
     canvas.focus();
   });

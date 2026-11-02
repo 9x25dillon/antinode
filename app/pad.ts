@@ -133,6 +133,8 @@ export class Pad {
   private touchStick = { x: 0, y: 0 };
   /** True once a finger has touched the controls. Switches the glyphs. */
   touched = false;
+  /** The game says when trim means something, so its buttons appear only then. */
+  trimShown = false;
 
   /** Pressed by a finger since the last `read`, and let go of before it. */
   private unread = new Set<string>();
